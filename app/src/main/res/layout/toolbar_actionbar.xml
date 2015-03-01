@@ -1,0 +1,10 @@
+<android.support.v7.widget.Toolbar xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:testapp="http://schemas.android.com/apk/res-auto"
+    testapp:theme="@style/ActionBarThemeOverlay"
+    testapp:popupTheme="@style/ActionBarPopupThemeOverlay"
+    android:id="@+id/toolbar_actionbar"
+    android:background="@null"
+    testapp:titleTextAppearance="@style/ActionBar.TitleText"
+    testapp:contentInsetStart="?actionBarInsetStart"
+    android:layout_width="match_parent"
+    android:layout_height="?actionBarSize" />
