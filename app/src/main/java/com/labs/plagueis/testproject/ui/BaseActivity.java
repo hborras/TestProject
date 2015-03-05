@@ -15,6 +15,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
@@ -24,7 +26,9 @@ import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.ActionBarActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
@@ -33,11 +37,14 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.labs.plagueis.testproject.R;
 import com.labs.plagueis.testproject.ui.widget.MultiSwipeRefreshLayout;
 import com.labs.plagueis.testproject.ui.widget.ScrimInsetsScrollView;
+import com.labs.plagueis.testproject.util.AccountUtils;
+import com.labs.plagueis.testproject.util.ImageLoader;
 import com.labs.plagueis.testproject.util.LUtils;
 import com.labs.plagueis.testproject.util.PrefUtils;
 import com.labs.plagueis.testproject.util.UIUtils;
@@ -129,6 +136,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
 
     // A Runnable that we should execute when the navigation drawer finishes its closing animation
     private Runnable mDeferredOnDrawerClosedRunnable;
+    private ImageLoader mImageLoader;
 
     // SwipeRefreshLayout allows the user to swipe the screen down to trigger a manual refresh
     private SwipeRefreshLayout mSwipeRefreshLayout;
@@ -169,7 +177,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         setupNavDrawer();
-        setupAccountBox();
+        //setupAccountBox();
 
         trySetupSwipeRefresh();
         updateSwipeRefreshProgressBarTop();
@@ -189,7 +197,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
      * shows the user's Google+ cover photo as background.
      */
     private void setupAccountBox() {
-     /*   mAccountListContainer = (LinearLayout) findViewById(R.id.account_list);
+        mAccountListContainer = (LinearLayout) findViewById(R.id.account_list);
 
         if (mAccountListContainer == null) {
             //This activity does not have an account box
@@ -261,8 +269,57 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
         });
         setupAccountBoxToggle();
 
-        populateAccountList(accounts);*/
+        populateAccountList(accounts);
     }
+
+    private void populateAccountList(List<Account> accounts) {
+        mAccountListContainer.removeAllViews();
+
+        LayoutInflater layoutInflater = LayoutInflater.from(this);
+        for (Account account : accounts) {
+            View itemView = layoutInflater.inflate(R.layout.list_item_account,
+                    mAccountListContainer, false);
+            ((TextView) itemView.findViewById(R.id.profile_email_text))
+                    .setText(account.name);
+            final String accountName = account.name;
+            String imageUrl = AccountUtils.getPlusImageUrl(this, accountName);
+            if (!TextUtils.isEmpty(imageUrl)) {
+                mImageLoader.loadImage(imageUrl,
+                        (ImageView) itemView.findViewById(R.id.profile_image));
+            }
+            itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    ConnectivityManager cm = (ConnectivityManager)
+                            getSystemService(CONNECTIVITY_SERVICE);
+                    NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+                    if (activeNetwork == null || !activeNetwork.isConnected()) {
+                        // if there's no network, don't try to change the selected account
+                        Toast.makeText(BaseActivity.this, R.string.no_connection_cant_login,
+                                Toast.LENGTH_SHORT).show();
+                        mDrawerLayout.closeDrawer(Gravity.START);
+                        return;
+                    } else {
+                        LOGD(TAG, "User requested switch to account: " + accountName);
+                        AccountUtils.setActiveAccount(BaseActivity.this, accountName);
+                        onAccountChangeRequested();
+                        startLoginProcess();
+                        mAccountBoxExpanded = false;
+                        setupAccountBoxToggle();
+                        mDrawerLayout.closeDrawer(Gravity.START);
+                        setupAccountBox();
+                    }
+                }
+            });
+            mAccountListContainer.addView(itemView);
+        }
+    }
+
+    protected void onAccountChangeRequested() {
+        // override if you want to be notified when another account has been selected account has changed
+    }
+
+
 
     private void trySetupSwipeRefresh() {
         mSwipeRefreshLayout = (SwipeRefreshLayout) findViewById(R.id.swipe_refresh_layout);
