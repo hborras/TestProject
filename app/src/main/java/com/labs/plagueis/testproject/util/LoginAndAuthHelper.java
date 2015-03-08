@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentSender;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 
@@ -15,8 +17,13 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.Scopes;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.plus.People;
+import com.google.android.gms.plus.Plus;
+import com.google.android.gms.plus.model.people.Person;
+import com.google.android.gms.plus.model.people.PersonBuffer;
 
 import static com.labs.plagueis.testproject.util.LogUtils.LOGD;
 import static com.labs.plagueis.testproject.util.LogUtils.LOGE;
@@ -36,24 +43,6 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
     private static final int REQUEST_RECOVER_FROM_AUTH_ERROR = 101;
     private static final int REQUEST_RECOVER_FROM_PLAY_SERVICES_ERROR = 102;
     private static final int REQUEST_PLAY_SERVICES_ERROR_DIALOG = 103;
-
-    // Auth scopes we need
-    public static final String AUTH_SCOPES[] = {
-            Scopes.PLUS_LOGIN,
-            Scopes.DRIVE_APPFOLDER,
-            "https://www.googleapis.com/auth/plus.profile.emails.read"};
-
-    static final String AUTH_TOKEN_TYPE;
-
-    static {
-        StringBuilder sb = new StringBuilder();
-        sb.append("oauth2:");
-        for (String scope : AUTH_SCOPES) {
-            sb.append(scope);
-            sb.append(" ");
-        }
-        AUTH_TOKEN_TYPE = sb.toString();
-    }
 
     private static final String TAG = makeLogTag(LoginAndAuthHelper.class);
 
@@ -77,9 +66,6 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
     // API client to interact with Google services
     private GoogleApiClient mGoogleApiClient;
 
-    // Async task that fetches the token
-    GetTokenTask mTokenTask = null;
-
     // Are we in the started state? Started state is between onStart and onStop.
     boolean mStarted = false;
 
@@ -93,24 +79,25 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
         void onAuthFailure(String accountName);
     }
 
-    @Override
-    public void onConnected(Bundle bundle) {
 
+    public LoginAndAuthHelper(Activity activity,Callbacks callbacks,String accountName){
+        LOGD(TAG, "Helper created. Account: " + mAccountName);
+        mActivityRef = new WeakReference<Activity>(activity);
+        mCallbacksRef = new WeakReference<Callbacks>(callbacks);
+        mAppContext = activity.getApplicationContext();
+        mAccountName = accountName;
+        /*if (PrefUtils.hasUserRefusedSignIn(activity)) {
+            // If we know the user refused sign-in, let's not annoy them.
+            sCanShowSignInUi = sCanShowAuthUi = false;
+        }*/
     }
 
-    @Override
-    public void onConnectionSuspended(int i) {
-
+    public boolean isStarted() {
+        return mStarted;
     }
 
-    @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {
-
-    }
-
-    @Override
-    public void onResult(People.LoadPeopleResult loadPeopleResult) {
-
+    public String getAccountName() {
+        return mAccountName;
     }
 
     private void reportAuthSuccess(boolean newlyAuthenticated) {
@@ -135,6 +122,208 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
             LOGD(TAG, "Helper lost Activity reference, ignoring (" + methodName + ")");
         }
         return activity;
+    }
+
+    public void retryAuthByUserRequest() {
+        LOGD(TAG, "Retrying sign-in/auth (user-initiated).");
+        if (!mGoogleApiClient.isConnected()) {
+            sCanShowAuthUi = sCanShowSignInUi = true;
+            //PrefUtils.markUserRefusedSignIn(mAppContext, false);
+            mGoogleApiClient.connect();
+        }
+    }
+
+    /** Starts the helper. Call this from your Activity's onStart(). */
+    public void start() {
+        Activity activity = getActivity("start()");
+        if (activity == null) {
+            return;
+        }
+
+        if (mStarted) {
+            LOGW(TAG, "Helper already started. Ignoring redundant call.");
+            return;
+        }
+
+        mStarted = true;
+        if (mResolving) {
+            // if resolving, don't reconnect the plus client
+            LOGD(TAG, "Helper ignoring signal to start because we're resolving a failure.");
+            return;
+        }
+        LOGD(TAG, "Helper starting. Connecting " + mAccountName);
+        if (mGoogleApiClient == null) {
+            LOGD(TAG, "Creating client.");
+
+            GoogleApiClient.Builder builder = new GoogleApiClient.Builder(activity);
+
+            mGoogleApiClient = builder.addApi(Plus.API)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .addScope(Plus.SCOPE_PLUS_LOGIN).build();
+        }
+        LOGD(TAG, "Connecting client.");
+        mGoogleApiClient.connect();
+    }
+
+
+    @Override
+    public void onConnected(Bundle bundle) {
+        Activity activity = getActivity("onConnected()");
+        if (activity == null) {
+            return;
+        }
+
+        LOGD(TAG, "Helper connected, account " + mAccountName);
+
+        // load user's Google+ profile, if we don't have it yet
+        if (!AccountUtils.hasPlusInfo(activity, mAccountName)) {
+            LOGD(TAG, "We don't have Google+ info for " + mAccountName + " yet, so loading.");
+            PendingResult<People.LoadPeopleResult> result = Plus.PeopleApi.load(mGoogleApiClient, "me");
+            result.setResultCallback(this);
+        } else {
+            LOGD(TAG, "No need for Google+ info, we already have it.");
+        }
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        LOGD(TAG, "onConnectionSuspended.");
+    }
+
+    /** Stop the helper. Call this from your Activity's onStop(). */
+    public void stop() {
+        if (!mStarted) {
+            LOGW(TAG, "Helper already stopped. Ignoring redundant call.");
+            return;
+        }
+
+        LOGD(TAG, "Helper stopping.");
+        mStarted = false;
+        if (mGoogleApiClient.isConnected()) {
+            LOGD(TAG, "Helper disconnecting client.");
+            mGoogleApiClient.disconnect();
+        }
+        mResolving = false;
+    }
+
+    // Called when the connection to Google Play Services fails.
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        Activity activity = getActivity("onConnectionFailed()");
+        if (activity == null) {
+            return;
+        }
+
+        if (connectionResult.hasResolution()) {
+            if (sCanShowSignInUi) {
+                LOGD(TAG, "onConnectionFailed, with resolution. Attempting to resolve.");
+                sCanShowSignInUi = false;
+                try {
+                    mResolving = true;
+                    connectionResult.startResolutionForResult(activity,
+                            REQUEST_RECOVER_FROM_PLAY_SERVICES_ERROR);
+                } catch (IntentSender.SendIntentException e) {
+                    LOGE(TAG, "SendIntentException occurred: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            } else {
+                LOGD(TAG, "onConnectionFailed with resolution but sCanShowSignInUi==false.");
+                reportAuthFailure();
+            }
+            return;
+        }
+
+        LOGD(TAG, "onConnectionFailed, no resolution.");
+        final int errorCode = connectionResult.getErrorCode();
+        if (GooglePlayServicesUtil.isUserRecoverableError(errorCode) && sCanShowSignInUi) {
+            sCanShowSignInUi = false;
+            GooglePlayServicesUtil.getErrorDialog(errorCode, activity,
+                    REQUEST_PLAY_SERVICES_ERROR_DIALOG).show();
+        } else {
+            reportAuthFailure();
+        }
+    }
+
+    // Called asynchronously -- result of loadPeople() call
+    @Override
+    public void onResult(People.LoadPeopleResult loadPeopleResult) {
+        LOGD(TAG, "onPeopleLoaded, status=" + loadPeopleResult.getStatus().toString());
+        if (loadPeopleResult.getStatus().isSuccess()) {
+            PersonBuffer personBuffer = loadPeopleResult.getPersonBuffer();
+            if (personBuffer != null && personBuffer.getCount() > 0) {
+                LOGD(TAG, "Got plus profile for account " + mAccountName);
+                Person currentUser = personBuffer.get(0);
+                personBuffer.close();
+
+                // Record profile ID, image URL and name
+                LOGD(TAG, "Saving plus profile ID: " + currentUser.getId());
+                AccountUtils.setPlusProfileId(mAppContext, mAccountName, currentUser.getId());
+                String imageUrl = currentUser.getImage().getUrl();
+                if (imageUrl != null) {
+                    imageUrl = Uri.parse(imageUrl)
+                            .buildUpon().appendQueryParameter("sz", "256").build().toString();
+                }
+                LOGD(TAG, "Saving plus image URL: " + imageUrl);
+                AccountUtils.setPlusImageUrl(mAppContext, mAccountName, imageUrl);
+                LOGD(TAG, "Saving plus display name: " + currentUser.getDisplayName());
+                AccountUtils.setPlusName(mAppContext, mAccountName, currentUser.getDisplayName());
+                Person.Cover cover = currentUser.getCover();
+                if (cover != null) {
+                    Person.Cover.CoverPhoto coverPhoto = cover.getCoverPhoto();
+                    if (coverPhoto != null) {
+                        LOGD(TAG, "Saving plus cover URL: " + coverPhoto.getUrl());
+                        AccountUtils.setPlusCoverUrl(mAppContext, mAccountName, coverPhoto.getUrl());
+                    }
+                } else {
+                    LOGD(TAG, "Profile has no cover.");
+                }
+
+                Callbacks callbacks;
+                if (null != (callbacks = mCallbacksRef.get())) {
+                    callbacks.onPlusInfoLoaded(mAccountName);
+                }
+            } else {
+                LOGE(TAG, "Plus response was empty! Failed to load profile.");
+            }
+        } else {
+            LOGE(TAG, "Failed to load plus proflie, error " + loadPeopleResult.getStatus().getStatusCode());
+        }
+    }
+
+    /** Handles an Activity result. Call this from your Activity's onActivityResult(). */
+    public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
+        Activity activity = getActivity("onActivityResult()");
+        if (activity == null) {
+            return false;
+        }
+
+        if (requestCode == REQUEST_AUTHENTICATE ||
+                requestCode == REQUEST_RECOVER_FROM_AUTH_ERROR ||
+                requestCode == REQUEST_PLAY_SERVICES_ERROR_DIALOG) {
+
+            LOGD(TAG, "onActivityResult, req=" + requestCode + ", result=" + resultCode);
+            if (requestCode == REQUEST_RECOVER_FROM_PLAY_SERVICES_ERROR) {
+                mResolving = false;
+            }
+
+            if (resultCode == Activity.RESULT_OK) {
+                if (mGoogleApiClient != null) {
+                    LOGD(TAG, "Since activity result was RESULT_OK, reconnecting client.");
+                    mGoogleApiClient.connect();
+                } else {
+                    LOGD(TAG, "Activity result was RESULT_OK, but we have no client to reconnect.");
+                }
+            } else if (resultCode == Activity.RESULT_CANCELED) {
+                LOGD(TAG, "User explicitly cancelled sign-in/auth flow.");
+                // save this as a preference so we don't annoy the user again
+                //PrefUtils.markUserRefusedSignIn(mAppContext);
+            } else {
+                LOGW(TAG, "Failed to recover from a login/auth failure, resultCode=" + resultCode);
+            }
+            return true;
+        }
+        return false;
     }
 
     private void showRecoveryDialog(int statusCode) {
@@ -168,103 +357,6 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
         } else {
             LOGD(TAG, "Not showing auth recovery flow because sCanShowSignInUi==false.");
             reportAuthFailure();
-        }
-    }
-
-    /** Async task that obtains the auth token. */
-    private class GetTokenTask extends AsyncTask<Void, Void, String> {
-        public GetTokenTask() {}
-
-        @Override
-        protected String doInBackground(Void... params) {
-            try {
-                if (isCancelled()) {
-                    LOGD(TAG, "doInBackground: task cancelled, so giving up on auth.");
-                    return null;
-                }
-
-                LOGD(TAG, "Starting background auth for " + mAccountName);
-                final String token = GoogleAuthUtil.getToken(mAppContext, mAccountName, AUTH_TOKEN_TYPE);
-
-                // Save auth token.
-                LOGD(TAG, "Saving token: " + (token == null ? "(null)" : "(length " +
-                        token.length() + ")") + " for account "  + mAccountName);
-                AccountUtils.setAuthToken(mAppContext, mAccountName, token);
-                return token;
-            } catch (GooglePlayServicesAvailabilityException e) {
-                postShowRecoveryDialog(e.getConnectionStatusCode());
-            } catch (UserRecoverableAuthException e) {
-                postShowAuthRecoveryFlow(e.getIntent());
-            } catch (IOException e) {
-                LOGE(TAG, "IOException encountered: " + e.getMessage());
-            } catch (GoogleAuthException e) {
-                LOGE(TAG, "GoogleAuthException encountered: " + e.getMessage());
-            } catch (RuntimeException e) {
-                LOGE(TAG, "RuntimeException encountered: " + e.getMessage());
-            }
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(String token) {
-            super.onPostExecute(token);
-
-            if (isCancelled()) {
-                LOGD(TAG, "Task cancelled, so not reporting auth success.");
-            } else if (!mStarted) {
-                LOGD(TAG, "Activity not started, so not reporting auth success.");
-            } else {
-                LOGD(TAG, "GetTokenTask reporting auth success.");
-                reportAuthSuccess(true);
-            }
-        }
-
-        private void postShowRecoveryDialog(final int statusCode) {
-            Activity activity = getActivity("postShowRecoveryDialog()");
-            if (activity == null) {
-                return;
-            }
-
-            if (isCancelled()) {
-                LOGD(TAG, "Task cancelled, so not showing recovery dialog.");
-                return;
-            }
-
-            LOGD(TAG, "Requesting display of recovery dialog for status code " + statusCode);
-            activity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mStarted) {
-                        showRecoveryDialog(statusCode);
-                    } else {
-                        LOGE(TAG, "Activity not started, so not showing recovery dialog.");
-                    }
-                }
-            });
-        }
-
-        private void postShowAuthRecoveryFlow(final Intent intent) {
-            Activity activity = getActivity("postShowAuthRecoveryFlow()");
-            if (activity == null) {
-                return;
-            }
-
-            if (isCancelled()) {
-                LOGD(TAG, "Task cancelled, so not showing auth recovery flow.");
-                return;
-            }
-
-            LOGD(TAG, "Requesting display of auth recovery flow.");
-            activity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mStarted) {
-                        showAuthRecoveryFlow(intent);
-                    } else {
-                        LOGE(TAG, "Activity not started, so not showing auth recovery flow.");
-                    }
-                }
-            });
         }
     }
 }

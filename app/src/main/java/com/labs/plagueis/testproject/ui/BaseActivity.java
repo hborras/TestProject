@@ -303,7 +303,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
                         LOGD(TAG, "User requested switch to account: " + accountName);
                         AccountUtils.setActiveAccount(BaseActivity.this, accountName);
                         onAccountChangeRequested();
-                        startLoginProcess();
+                        //startLoginProcess();
                         mAccountBoxExpanded = false;
                         setupAccountBoxToggle();
                         mDrawerLayout.closeDrawer(Gravity.START);
