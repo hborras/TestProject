@@ -10,7 +10,9 @@ import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.animation.TypeEvaluator;
 import android.animation.ValueAnimator;
+import android.app.AlertDialog;
 import android.content.ContentResolver;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -20,6 +22,7 @@ import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.support.v4.view.ViewCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
@@ -46,6 +49,7 @@ import com.labs.plagueis.testproject.ui.widget.ScrimInsetsScrollView;
 import com.labs.plagueis.testproject.util.AccountUtils;
 import com.labs.plagueis.testproject.util.ImageLoader;
 import com.labs.plagueis.testproject.util.LUtils;
+import com.labs.plagueis.testproject.util.LoginAndAuthHelper;
 import com.labs.plagueis.testproject.util.PrefUtils;
 import com.labs.plagueis.testproject.util.UIUtils;
 
@@ -53,12 +57,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.labs.plagueis.testproject.util.LogUtils.LOGE;
+import static com.labs.plagueis.testproject.util.LogUtils.LOGI;
 import static com.labs.plagueis.testproject.util.LogUtils.makeLogTag;
 import static com.labs.plagueis.testproject.util.LogUtils.LOGD;
 import static com.labs.plagueis.testproject.util.LogUtils.LOGW;
 
 
-public abstract class BaseActivity extends ActionBarActivity implements  SharedPreferences.OnSharedPreferenceChangeListener,
+public abstract class BaseActivity extends ActionBarActivity implements  LoginAndAuthHelper.Callbacks,SharedPreferences.OnSharedPreferenceChangeListener,
         MultiSwipeRefreshLayout.CanChildScrollUpCallback {
     private static final String TAG = makeLogTag(BaseActivity.class);
 
@@ -72,6 +78,8 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
 
     private ImageView mExpandAccountBoxIndicator;
     private boolean mAccountBoxExpanded = false;
+
+    protected LoginAndAuthHelper mLoginAndAuthHelper;
 
     // Variables that control the Action Bar auto hide behavior (aka "quick recall")
     private boolean mActionBarAutoHideEnabled = false;
@@ -160,6 +168,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
             finish();
         }
 
+        mImageLoader = new ImageLoader(this);
         mHandler = new Handler();
 
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
@@ -177,7 +186,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         setupNavDrawer();
-        //setupAccountBox();
+        setupAccountBox();
 
         trySetupSwipeRefresh();
         updateSwipeRefreshProgressBarTop();
@@ -249,6 +258,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
 
         email.setText(chosenAccount.name);
 
+
         if (accounts.isEmpty()) {
             // There's only one account on the device, so no need for a switcher.
             mExpandAccountBoxIndicator.setVisibility(View.GONE);
@@ -303,7 +313,7 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
                         LOGD(TAG, "User requested switch to account: " + accountName);
                         AccountUtils.setActiveAccount(BaseActivity.this, accountName);
                         onAccountChangeRequested();
-                        //startLoginProcess();
+                        startLoginProcess();
                         mAccountBoxExpanded = false;
                         setupAccountBoxToggle();
                         mDrawerLayout.closeDrawer(Gravity.START);
@@ -313,6 +323,104 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
             });
             mAccountListContainer.addView(itemView);
         }
+    }
+
+    /**
+     * Returns the default account on the device. We use the rule that the first account
+     * should be the default. It's arbitrary, but the alternative would be showing an account
+     * chooser popup which wouldn't be a smooth first experience with the app. Since the user
+     * can easily switch the account with the nav drawer, we opted for this implementation.
+     */
+    private Account[] getDefaultAccount() {
+        // Choose first account on device.
+        LOGD(TAG, "Choosing default account (first account on device)");
+        AccountManager am = AccountManager.get(this);
+        Account[] accounts = am.getAccountsByType(GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE);
+        if (accounts.length == 0) {
+            // No Google accounts on device.
+            LOGW(TAG, "No Google accounts on device; not setting default account.");
+            return null;
+        }
+
+        LOGD(TAG, "Default account is: " + accounts[0].name);
+        return accounts;
+    }
+
+    protected void startLoginProcess() {
+        LOGD(TAG, "Starting login process.");
+        if (!AccountUtils.hasActiveAccount(this)) {
+            LOGD(TAG, "No active account, attempting to pick one in selector.");
+            Account[] defaultAccount = getDefaultAccount();
+            if (defaultAccount == null) {
+                LOGE(TAG, "Failed to pick default account (no accounts). Failing.");
+                complainMustHaveGoogleAccount();
+                return;
+            }
+            LOGD(TAG, "Creating and starting new Helper with no account");
+            mLoginAndAuthHelper = new LoginAndAuthHelper(this, this, "");
+            mLoginAndAuthHelper.start();
+
+            /*LOGD(TAG, "Default to: " + defaultAccount);
+            AccountUtils.setActiveAccount(this, defaultAccount);*/
+        }
+
+        if (!AccountUtils.hasActiveAccount(this)) {
+            LOGD(TAG, "Can't proceed with login -- no account chosen.");
+            return;
+        } else {
+            LOGD(TAG, "Chosen account: " + AccountUtils.getActiveAccountName(this));
+        }
+
+        String accountName = AccountUtils.getActiveAccountName(this);
+        LOGD(TAG, "Chosen account: " + AccountUtils.getActiveAccountName(this));
+
+        if (mLoginAndAuthHelper != null && mLoginAndAuthHelper.getAccountName().equals(accountName)) {
+            LOGD(TAG, "Helper already set up; simply starting it.");
+            mLoginAndAuthHelper.start();
+            return;
+        }
+
+        LOGD(TAG, "Starting login process with account " + accountName);
+
+        if (mLoginAndAuthHelper != null) {
+            LOGD(TAG, "Tearing down old Helper, was " + mLoginAndAuthHelper.getAccountName());
+            if (mLoginAndAuthHelper.isStarted()) {
+                LOGD(TAG, "Stopping old Helper");
+                mLoginAndAuthHelper.stop();
+            }
+            mLoginAndAuthHelper = null;
+        }
+
+        LOGD(TAG, "Creating and starting new Helper with account: " + accountName);
+        mLoginAndAuthHelper = new LoginAndAuthHelper(this, this, accountName);
+        mLoginAndAuthHelper.start();
+    }
+
+    private void complainMustHaveGoogleAccount() {
+        LOGD(TAG, "Complaining about missing Google account.");
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.google_account_required_title)
+                .setMessage(R.string.google_account_required_message)
+                .setPositiveButton(R.string.add_account, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        promptAddAccount();
+                    }
+                })
+                .setNegativeButton(R.string.not_now, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        finish();
+                    }
+                })
+                .show();
+    }
+
+    private void promptAddAccount() {
+        Intent intent = new Intent(Settings.ACTION_ADD_ACCOUNT);
+        intent.putExtra(Settings.EXTRA_ACCOUNT_TYPES, new String[]{"com.google"});
+        startActivity(intent);
+        finish();
     }
 
     protected void onAccountChangeRequested() {
@@ -1003,5 +1111,25 @@ public abstract class BaseActivity extends ActionBarActivity implements  SharedP
     @Override
     public boolean canSwipeRefreshChildScrollUp() {
         return false;
+    }
+
+    @Override
+    public void onPlusInfoLoaded(String accountName) {
+        LOGI(TAG,"PLus info loaded with account name: " + accountName);
+        /*PrefUtils.markUserSignedIn(BaseActivity.this);
+        Intent intent = new Intent(BaseActivity.this, Activity1.class);
+        startActivity(intent);
+        finish();*/
+        //updateUI(true);
+    }
+
+    @Override
+    public void onAuthSuccess(String accountName, boolean newlyAuthenticated) {
+        LOGI(TAG,"Auth Success with account name" + accountName);
+    }
+
+    @Override
+    public void onAuthFailure(String accountName) {
+        LOGI(TAG,"Auth failure with account name: " + accountName);
     }
 }

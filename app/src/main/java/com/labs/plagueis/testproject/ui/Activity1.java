@@ -8,6 +8,7 @@ import android.widget.Toast;
 
 import com.labs.plagueis.testproject.R;
 import com.labs.plagueis.testproject.ui.widget.DrawShadowFrameLayout;
+import com.labs.plagueis.testproject.util.LoginAndAuthHelper;
 
 import static com.labs.plagueis.testproject.util.LogUtils.makeLogTag;
 
@@ -60,5 +61,7 @@ public class Activity1 extends BaseActivity{
         // we only have a nav drawer if we are in top-level Explore mode.
         return mMode == 0 ? NAVDRAWER_ITEM_ACTIVITY_1 : NAVDRAWER_ITEM_INVALID;
     }
+
+
 
 }

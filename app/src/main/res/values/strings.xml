@@ -20,4 +20,8 @@
     <string name="pref_item_1_summary">This is a test summary</string>
     <string name="pref_item_1_title">This is a test Title</string>
     <string name="no_connection_cant_login">Can\'t sign in. Check your network connection.</string>
+    <string name="not_now">Not now</string>
+    <string name="add_account">Add account</string>
+    <string name="google_account_required_message">You should add an account to use this app</string>
+    <string name="google_account_required_title">Account required</string>
 </resources>

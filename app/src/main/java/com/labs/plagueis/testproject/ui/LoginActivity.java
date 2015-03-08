@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.PersistableBundle;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -60,23 +61,6 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
         btnSignIn.setOnClickListener(this);
         btnSignOut.setOnClickListener(this);
         btnRevokeAccess.setOnClickListener(this);
-
-        findViewById(R.id.button_accept).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                PrefUtils.markUserSignedIn(LoginActivity.this);
-                Intent intent = new Intent(LoginActivity.this, Activity1.class);
-                startActivity(intent);
-                finish();
-            }
-        });
-
-        findViewById(R.id.button_decline).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finish();
-            }
-        });
     }
 
     /**
@@ -85,7 +69,7 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
      * chooser popup which wouldn't be a smooth first experience with the app. Since the user
      * can easily switch the account with the nav drawer, we opted for this implementation.
      */
-    private String getDefaultAccount() {
+    private Account[] getDefaultAccount() {
         // Choose first account on device.
         LOGD(TAG, "Choosing default account (first account on device)");
         AccountManager am = AccountManager.get(this);
@@ -97,12 +81,12 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
         }
 
         LOGD(TAG, "Default account is: " + accounts[0].name);
-        return accounts[0].name;
+        return accounts;
     }
 
     private void complainMustHaveGoogleAccount() {
         LOGD(TAG, "Complaining about missing Google account.");
-        /*new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setTitle(R.string.google_account_required_title)
                 .setMessage(R.string.google_account_required_message)
                 .setPositiveButton(R.string.add_account, new DialogInterface.OnClickListener() {
@@ -117,21 +101,32 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
                         finish();
                     }
                 })
-                .show();*/
+                .show();
+    }
+
+    private void promptAddAccount() {
+        Intent intent = new Intent(Settings.ACTION_ADD_ACCOUNT);
+        intent.putExtra(Settings.EXTRA_ACCOUNT_TYPES, new String[]{"com.google"});
+        startActivity(intent);
+        finish();
     }
 
     private void startLoginProcess() {
         LOGD(TAG, "Starting login process.");
         if (!AccountUtils.hasActiveAccount(this)) {
-            LOGD(TAG, "No active account, attempting to pick a default.");
-            String defaultAccount = getDefaultAccount();
+            LOGD(TAG, "No active account, attempting to pick one in selector.");
+            Account[] defaultAccount = getDefaultAccount();
             if (defaultAccount == null) {
                 LOGE(TAG, "Failed to pick default account (no accounts). Failing.");
                 complainMustHaveGoogleAccount();
                 return;
             }
-            LOGD(TAG, "Default to: " + defaultAccount);
-            AccountUtils.setActiveAccount(this, defaultAccount);
+            LOGD(TAG, "Creating and starting new Helper with no account");
+            mLoginAndAuthHelper = new LoginAndAuthHelper(this, this, "");
+            mLoginAndAuthHelper.start();
+
+            /*LOGD(TAG, "Default to: " + defaultAccount);
+            AccountUtils.setActiveAccount(this, defaultAccount);*/
         }
 
         if (!AccountUtils.hasActiveAccount(this)) {
@@ -186,7 +181,11 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
     @Override
     public void onPlusInfoLoaded(String accountName) {
         LOGI(TAG,"PLus info loaded with account name: " + accountName);
-        updateUI(true);
+        PrefUtils.markUserSignedIn(LoginActivity.this);
+        Intent intent = new Intent(LoginActivity.this, Activity1.class);
+        startActivity(intent);
+        finish();
+        //updateUI(true);
     }
 
     @Override
@@ -248,11 +247,12 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
      * */
     private void signOutFromGplus() {
         mLoginAndAuthHelper.stop();
+        updateUI(false);
         /*if (mGoogleApiClient.isConnected()) {
             Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
             mGoogleApiClient.disconnect();
             mGoogleApiClient.connect();
-            updateUI(false);
+
         }*/
     }
 
@@ -260,18 +260,7 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
      * Revoking access from google
      * */
     private void revokeGplusAccess() {
-        /*if (mGoogleApiClient.isConnected()) {
-            Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
-            Plus.AccountApi.revokeAccessAndDisconnect(mGoogleApiClient)
-                    .setResultCallback(new ResultCallback<Status>() {
-                        @Override
-                        public void onResult(Status arg0) {
-                            Log.e(TAG, "User access revoked!");
-                            mGoogleApiClient.connect();
-                            updateUI(false);
-                        }
-
-                    });
-        }*/
+        mLoginAndAuthHelper.revokeGplusAccess();
+        updateUI(false);
     }
 }

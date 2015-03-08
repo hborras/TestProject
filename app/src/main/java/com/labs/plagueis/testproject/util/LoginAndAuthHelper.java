@@ -20,6 +20,7 @@ import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Scope;
+import com.google.android.gms.common.api.Status;
 import com.google.android.gms.plus.People;
 import com.google.android.gms.plus.Plus;
 import com.google.android.gms.plus.model.people.Person;
@@ -252,10 +253,18 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
         if (loadPeopleResult.getStatus().isSuccess()) {
             PersonBuffer personBuffer = loadPeopleResult.getPersonBuffer();
             if (personBuffer != null && personBuffer.getCount() > 0) {
-                LOGD(TAG, "Got plus profile for account " + mAccountName);
+
                 Person currentUser = personBuffer.get(0);
                 personBuffer.close();
+                if(mAccountName.equalsIgnoreCase("") ){
+                    mAccountName = Plus.AccountApi.getAccountName(mGoogleApiClient);
+                }
 
+                if(!mAccountName.equalsIgnoreCase("") ){
+                    AccountUtils.setActiveAccount(mAppContext,mAccountName);
+                }
+
+                LOGD(TAG, "Got plus profile for account " + mAccountName);
                 // Record profile ID, image URL and name
                 LOGD(TAG, "Saving plus profile ID: " + currentUser.getId());
                 AccountUtils.setPlusProfileId(mAppContext, mAccountName, currentUser.getId());
@@ -275,6 +284,9 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
                         LOGD(TAG, "Saving plus cover URL: " + coverPhoto.getUrl());
                         AccountUtils.setPlusCoverUrl(mAppContext, mAccountName, coverPhoto.getUrl());
                     }
+                    LOGE(TAG, "Name: " + currentUser.getDisplayName() + ", plusProfile: "
+                            + currentUser.getId() + ", email: " + mAccountName
+                            + ", Image: " + coverPhoto.getUrl());
                 } else {
                     LOGD(TAG, "Profile has no cover.");
                 }
@@ -300,7 +312,8 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
 
         if (requestCode == REQUEST_AUTHENTICATE ||
                 requestCode == REQUEST_RECOVER_FROM_AUTH_ERROR ||
-                requestCode == REQUEST_PLAY_SERVICES_ERROR_DIALOG) {
+                requestCode == REQUEST_PLAY_SERVICES_ERROR_DIALOG ||
+                requestCode == REQUEST_RECOVER_FROM_PLAY_SERVICES_ERROR) {
 
             LOGD(TAG, "onActivityResult, req=" + requestCode + ", result=" + resultCode);
             if (requestCode == REQUEST_RECOVER_FROM_PLAY_SERVICES_ERROR) {
@@ -357,6 +370,24 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
         } else {
             LOGD(TAG, "Not showing auth recovery flow because sCanShowSignInUi==false.");
             reportAuthFailure();
+        }
+    }
+
+    /**
+     * Revoking access from google
+     * */
+    public void revokeGplusAccess() {
+        if (mGoogleApiClient.isConnected()) {
+            Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
+            Plus.AccountApi.revokeAccessAndDisconnect(mGoogleApiClient)
+                    .setResultCallback(new ResultCallback<Status>() {
+                        @Override
+                        public void onResult(Status arg0) {
+                            LOGE(TAG, "User access revoked!");
+                            mGoogleApiClient.connect();
+                        }
+
+                    });
         }
     }
 }
