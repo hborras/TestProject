@@ -162,7 +162,6 @@ public abstract class BaseActivity extends ActionBarActivity implements  LoginAn
 
         // Check if user is signed in or logged in
         if(!PrefUtils.isUserSignedIn(this)){
-
             Intent intent = new Intent(this,LoginActivity.class);
             startActivity(intent);
             finish();
@@ -467,6 +466,11 @@ public abstract class BaseActivity extends ActionBarActivity implements  LoginAn
     @Override
     protected void onResume() {
         super.onResume();
+
+        if(mLoginAndAuthHelper == null ){
+            mLoginAndAuthHelper = new LoginAndAuthHelper(this, this, "");
+            mLoginAndAuthHelper.start();
+        }
 
         // Verifies the proper version of Google Play Services exists on the device.
         /*PlayServicesUtils.checkGooglePlaySevices(this);
@@ -1131,5 +1135,20 @@ public abstract class BaseActivity extends ActionBarActivity implements  LoginAn
     @Override
     public void onAuthFailure(String accountName) {
         LOGI(TAG,"Auth failure with account name: " + accountName);
+    }
+
+    /**
+     * Sign-out from google
+     * */
+    protected void signOutFromGplus() {
+
+        mLoginAndAuthHelper.stop();
+    }
+
+    /**
+     * Revoking access from google
+     * */
+    protected void revokeGplusAccess() {
+        mLoginAndAuthHelper.revokeGplusAccess();
     }
 }

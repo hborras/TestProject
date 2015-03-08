@@ -66,17 +66,33 @@
         </LinearLayout>
 
         <!-- Butter bar -->
-        <FrameLayout android:layout_width="match_parent"
+        <LinearLayout android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="top"
-            android:layout_marginTop="?actionBarSize">
+            android:layout_marginTop="?actionBarSize"
+            android:orientation="vertical">
             <include layout="@layout/include_butter_bar" />
 
             <EditText
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:text="I'm Activity number 2"/>
-        </FrameLayout>
+
+            <Button
+                android:id="@+id/btn_sign_out"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:text="Sign Out"
+                android:visibility="visible"
+                android:layout_marginBottom="10dp"/>
+
+            <Button
+                android:id="@+id/btn_revoke_access"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:text="Revoke Access"
+                android:visibility="visible" />
+        </LinearLayout>
     </com.labs.plagueis.testproject.ui.widget.DrawShadowFrameLayout>
 
     <!-- Nav drawer -->

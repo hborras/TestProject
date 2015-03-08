@@ -41,7 +41,6 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
     private LoginAndAuthHelper mLoginAndAuthHelper;
 
     private SignInButton btnSignIn;
-    private Button btnSignOut, btnRevokeAccess;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,12 +54,8 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
         setContentView(R.layout.login_layout);
 
         btnSignIn = (SignInButton) findViewById(R.id.btn_sign_in);
-        btnSignOut = (Button) findViewById(R.id.btn_sign_out);
-        btnRevokeAccess = (Button) findViewById(R.id.btn_revoke_access);
 
         btnSignIn.setOnClickListener(this);
-        btnSignOut.setOnClickListener(this);
-        btnRevokeAccess.setOnClickListener(this);
     }
 
     /**
@@ -210,13 +205,7 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
                 // Signin button clicked
                 signInWithGplus();
                 break;
-            case R.id.btn_sign_out:
-                // Signout button clicked
-                signOutFromGplus();
-                break;
-            case R.id.btn_revoke_access:
-                // Revoke access button clicked
-                revokeGplusAccess();
+
         }
     }
 
@@ -226,12 +215,8 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
     private void updateUI(boolean isSignedIn) {
         if (isSignedIn) {
             btnSignIn.setVisibility(View.GONE);
-            btnSignOut.setVisibility(View.VISIBLE);
-            btnRevokeAccess.setVisibility(View.VISIBLE);
         } else {
             btnSignIn.setVisibility(View.VISIBLE);
-            btnSignOut.setVisibility(View.GONE);
-            btnRevokeAccess.setVisibility(View.GONE);
         }
     }
 
@@ -240,27 +225,5 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
      * */
     private void signInWithGplus() {
         startLoginProcess();
-    }
-
-    /**
-     * Sign-out from google
-     * */
-    private void signOutFromGplus() {
-        mLoginAndAuthHelper.stop();
-        updateUI(false);
-        /*if (mGoogleApiClient.isConnected()) {
-            Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
-            mGoogleApiClient.disconnect();
-            mGoogleApiClient.connect();
-
-        }*/
-    }
-
-    /**
-     * Revoking access from google
-     * */
-    private void revokeGplusAccess() {
-        mLoginAndAuthHelper.revokeGplusAccess();
-        updateUI(false);
     }
 }

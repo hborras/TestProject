@@ -34,6 +34,11 @@ public class PrefUtils  {
         sp.edit().putBoolean(PREF_USER_SIGNED_IN, true).commit();
     }
 
+    public static void markUserUnSigned(final Context context) {
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
+        sp.edit().putBoolean(PREF_USER_SIGNED_IN, false).commit();
+    }
+
     public static boolean isUserSignedDone(final Context context) {
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
         return sp.getBoolean(PREF_USER_SIGNED_DONE, false);

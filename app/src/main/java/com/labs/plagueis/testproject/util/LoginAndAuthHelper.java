@@ -217,9 +217,9 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
         }
 
         if (connectionResult.hasResolution()) {
-            if (sCanShowSignInUi) {
+            /*if (sCanShowSignInUi) {*/
                 LOGD(TAG, "onConnectionFailed, with resolution. Attempting to resolve.");
-                sCanShowSignInUi = false;
+                /*sCanShowSignInUi = false;*/
                 try {
                     mResolving = true;
                     connectionResult.startResolutionForResult(activity,
@@ -228,10 +228,10 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
                     LOGE(TAG, "SendIntentException occurred: " + e.getMessage());
                     e.printStackTrace();
                 }
-            } else {
+            /*} else {
                 LOGD(TAG, "onConnectionFailed with resolution but sCanShowSignInUi==false.");
                 reportAuthFailure();
-            }
+            }*/
             return;
         }
 
@@ -377,6 +377,15 @@ public class LoginAndAuthHelper implements GoogleApiClient.ConnectionCallbacks, 
      * Revoking access from google
      * */
     public void revokeGplusAccess() {
+        Activity activity = getActivity("revokeGplusAccess()");
+        if (activity == null) {
+            return;
+        }
+
+        if(AccountUtils.hasActiveAccount(activity)){
+            AccountUtils.setActiveAccount(activity,null);
+            PrefUtils.markUserUnSigned(activity);
+        }
         if (mGoogleApiClient.isConnected()) {
             Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
             Plus.AccountApi.revokeAccessAndDisconnect(mGoogleApiClient)
