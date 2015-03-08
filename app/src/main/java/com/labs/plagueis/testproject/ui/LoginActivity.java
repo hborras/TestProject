@@ -12,8 +12,10 @@ import android.os.PersistableBundle;
 import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 
 import com.google.android.gms.auth.GoogleAuthUtil;
+import com.google.android.gms.common.SignInButton;
 import com.labs.plagueis.testproject.R;
 import com.labs.plagueis.testproject.util.AccountUtils;
 import com.labs.plagueis.testproject.util.LoginAndAuthHelper;
@@ -30,12 +32,15 @@ import static com.labs.plagueis.testproject.util.LogUtils.LOGW;
  * Created by plagueis on 28/02/15.
  */
 public class LoginActivity extends Activity implements LoginAndAuthHelper.Callbacks,
-        SharedPreferences.OnSharedPreferenceChangeListener{
+        SharedPreferences.OnSharedPreferenceChangeListener, View.OnClickListener{
 
     private static final String TAG = makeLogTag(LoginActivity.class);
 
     // the LoginAndAuthHelper handles signing in to Google Play Services and OAuth
     private LoginAndAuthHelper mLoginAndAuthHelper;
+
+    private SignInButton btnSignIn;
+    private Button btnSignOut, btnRevokeAccess;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,6 +52,14 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
         sp.registerOnSharedPreferenceChangeListener(this);
 
         setContentView(R.layout.login_layout);
+
+        btnSignIn = (SignInButton) findViewById(R.id.btn_sign_in);
+        btnSignOut = (Button) findViewById(R.id.btn_sign_out);
+        btnRevokeAccess = (Button) findViewById(R.id.btn_revoke_access);
+
+        btnSignIn.setOnClickListener(this);
+        btnSignOut.setOnClickListener(this);
+        btnRevokeAccess.setOnClickListener(this);
 
         findViewById(R.id.button_accept).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -173,6 +186,7 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
     @Override
     public void onPlusInfoLoaded(String accountName) {
         LOGI(TAG,"PLus info loaded with account name: " + accountName);
+        updateUI(true);
     }
 
     @Override
@@ -188,5 +202,76 @@ public class LoginActivity extends Activity implements LoginAndAuthHelper.Callba
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
 
+    }
+
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.btn_sign_in:
+                // Signin button clicked
+                signInWithGplus();
+                break;
+            case R.id.btn_sign_out:
+                // Signout button clicked
+                signOutFromGplus();
+                break;
+            case R.id.btn_revoke_access:
+                // Revoke access button clicked
+                revokeGplusAccess();
+        }
+    }
+
+    /**
+     * Updating the UI, showing/hiding buttons and profile layout
+     * */
+    private void updateUI(boolean isSignedIn) {
+        if (isSignedIn) {
+            btnSignIn.setVisibility(View.GONE);
+            btnSignOut.setVisibility(View.VISIBLE);
+            btnRevokeAccess.setVisibility(View.VISIBLE);
+        } else {
+            btnSignIn.setVisibility(View.VISIBLE);
+            btnSignOut.setVisibility(View.GONE);
+            btnRevokeAccess.setVisibility(View.GONE);
+        }
+    }
+
+    /**
+     * Sign-in into google
+     * */
+    private void signInWithGplus() {
+        startLoginProcess();
+    }
+
+    /**
+     * Sign-out from google
+     * */
+    private void signOutFromGplus() {
+        mLoginAndAuthHelper.stop();
+        /*if (mGoogleApiClient.isConnected()) {
+            Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
+            mGoogleApiClient.disconnect();
+            mGoogleApiClient.connect();
+            updateUI(false);
+        }*/
+    }
+
+    /**
+     * Revoking access from google
+     * */
+    private void revokeGplusAccess() {
+        /*if (mGoogleApiClient.isConnected()) {
+            Plus.AccountApi.clearDefaultAccount(mGoogleApiClient);
+            Plus.AccountApi.revokeAccessAndDisconnect(mGoogleApiClient)
+                    .setResultCallback(new ResultCallback<Status>() {
+                        @Override
+                        public void onResult(Status arg0) {
+                            Log.e(TAG, "User access revoked!");
+                            mGoogleApiClient.connect();
+                            updateUI(false);
+                        }
+
+                    });
+        }*/
     }
 }
